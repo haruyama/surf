@@ -2,7 +2,10 @@ package browser
 
 import (
 	"bytes"
+	"compress/flate"
+	"compress/gzip"
 	"io"
+	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -10,8 +13,10 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/haruyama/surf/errors"
-	"github.com/haruyama/surf/jar"
+	"github.com/itchio/go-brotli/dec"
+
+	"github.com/pacificporter/surf/errors"
+	"github.com/pacificporter/surf/jar"
 )
 
 // Attribute represents a Browser capability.
@@ -19,6 +24,13 @@ type Attribute int
 
 // AttributeMap represents a map of Attribute values.
 type AttributeMap map[Attribute]bool
+
+type File struct {
+	fileName string
+	data     io.Reader
+}
+
+type FileSet map[string]*File
 
 const (
 	// SendRefererAttribute instructs a Browser to send the Referer header.
@@ -59,8 +71,14 @@ type Browsable interface {
 	// SetHeadersJar sets the headers the browser sends with each request.
 	SetHeadersJar(h http.Header)
 
+	// SetTransport sets the Transport of the browser. It can be used for use Proxy.
+	SetTransport(t *http.Transport)
+
 	// AddRequestHeader adds a header the browser sends with each request.
 	AddRequestHeader(name, value string)
+
+	// SetRequestHeader sets a header the browser sends with each request.
+	SetRequestHeader(name, value string)
 
 	// Open requests the given URL using the GET method.
 	Open(url string) error
@@ -78,7 +96,7 @@ type Browsable interface {
 	PostForm(url string, data url.Values) error
 
 	// PostMultipart requests the given URL using the POST method with the given data using multipart/form-data format.
-	PostMultipart(u string, data url.Values) error
+	PostMultipart(u string, data url.Values, files FileSet) error
 
 	// Back loads the previously requested page.
 	Back() bool
@@ -172,6 +190,12 @@ type Browser struct {
 
 	// refresh is a timer used to meta refresh pages.
 	refresh *time.Timer
+
+	// transport is the browser connection transport.
+	transport *http.Transport
+
+	// body of the current page.
+	body []byte
 }
 
 // Open requests the given URL using the GET method.
@@ -218,13 +242,25 @@ func (bow *Browser) PostForm(u string, data url.Values) error {
 }
 
 // PostMultipart requests the given URL using the POST method with the given data using multipart/form-data format.
-func (bow *Browser) PostMultipart(u string, data url.Values) error {
+func (bow *Browser) PostMultipart(u string, data url.Values, files FileSet) error {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
 	for k, vs := range data {
 		for _, v := range vs {
 			writer.WriteField(k, v)
+		}
+	}
+	for k, file := range files {
+		fw, err := writer.CreateFormFile(k, file.fileName)
+		if err != nil {
+			return err
+		}
+		if file.data != nil {
+			_, err := io.Copy(fw, file.data)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	err := writer.Close()
@@ -427,9 +463,19 @@ func (bow *Browser) SetHeadersJar(h http.Header) {
 	bow.headers = h
 }
 
+// SetTransport sets the Transport of the browser. It can be used for set Proxy.
+func (bow *Browser) SetTransport(t *http.Transport) {
+	bow.transport = t
+}
+
 // AddRequestHeader sets a header the browser sends with each request.
 func (bow *Browser) AddRequestHeader(name, value string) {
 	bow.headers.Add(name, value)
+}
+
+// SetRequestHeader sets a header the browser sends with each request.
+func (bow *Browser) SetRequestHeader(name, value string) {
+	bow.headers.Set(name, value)
 }
 
 // ResolveUrl returns an absolute URL for a possibly relative URL.
@@ -529,6 +575,11 @@ func (bow *Browser) buildClient() *http.Client {
 	client := &http.Client{}
 	client.Jar = bow.cookies
 	client.CheckRedirect = bow.shouldRedirect
+
+	if bow.transport != nil {
+		client.Transport = bow.transport
+	}
+
 	return client
 }
 
@@ -540,9 +591,9 @@ func (bow *Browser) buildRequest(method, url string, ref *url.URL, body io.Reade
 		return nil, err
 	}
 	req.Header = bow.headers
-	req.Header.Add("User-Agent", bow.userAgent)
+	req.Header.Set("User-Agent", bow.userAgent)
 	if bow.attributes[SendReferer] && ref != nil {
-		req.Header.Add("Referer", ref.String())
+		req.Header.Set("Referer", ref.String())
 	}
 
 	return req, nil
@@ -573,16 +624,56 @@ func (bow *Browser) httpPOST(u *url.URL, ref *url.URL, contentType string, body 
 }
 
 // send uses the given *http.Request to make an HTTP request.
-func (bow *Browser) httpRequest(req *http.Request) error {
+func (bow *Browser) httpRequest(req *http.Request) (err error) {
 	bow.preSend()
 	resp, err := bow.buildClient().Do(req)
 	if err != nil {
 		return err
 	}
-	dom, err := goquery.NewDocumentFromResponse(resp)
+	if resp == nil {
+		return errors.New("Response is nil")
+	}
+
+	var reader io.ReadCloser
+	var isWrapped bool
+	switch resp.Header.Get("Content-Encoding") {
+	case "gzip":
+		reader, err = gzip.NewReader(resp.Body)
+		if err != nil {
+			return err
+		}
+		isWrapped = true
+	case "deflate":
+		reader = flate.NewReader(resp.Body)
+		isWrapped = true
+	case "br":
+		reader = dec.NewBrotliReader(resp.Body)
+		isWrapped = true
+	default:
+		reader = resp.Body
+	}
+	defer func() {
+		if isWrapped {
+			if cerr := reader.Close(); cerr != nil && err == nil {
+				err = cerr
+			}
+		}
+		if cerr := resp.Body.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
+	bow.body, err = ioutil.ReadAll(reader)
 	if err != nil {
 		return err
 	}
+
+	buff := bytes.NewBuffer(bow.body)
+	dom, err := goquery.NewDocumentFromReader(buff)
+	if err != nil {
+		return err
+	}
+
 	bow.history.Push(bow.state)
 	bow.state = jar.NewHistoryState(req, resp, dom)
 	bow.postSend()
@@ -609,7 +700,7 @@ func (bow *Browser) postSend() {
 					bow.refresh = time.NewTimer(dur)
 					go func() {
 						<-bow.refresh.C
-						bow.Reload()
+						_ = bow.Reload()
 					}()
 				}
 			}

@@ -7,18 +7,18 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/haruyama/surf/browser"
-	"github.com/haruyama/surf/jar"
 	"github.com/headzoo/ut"
+	"github.com/pacificporter/surf/browser"
+	"github.com/pacificporter/surf/jar"
 )
 
 func TestGet(t *testing.T) {
 	ut.Run(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path == "/page1" {
-			fmt.Fprint(w, htmlPage1)
+			_, _ = fmt.Fprint(w, htmlPage1)
 		} else if req.URL.Path == "/page2" {
-			fmt.Fprint(w, htmlPage2)
+			_, _ = fmt.Fprint(w, htmlPage2)
 		}
 	}))
 	defer ts.Close()
@@ -46,12 +46,12 @@ func TestGet(t *testing.T) {
 func TestDownload(t *testing.T) {
 	ut.Run(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		fmt.Fprint(w, req.UserAgent())
+		_, _ = fmt.Fprint(w, req.UserAgent())
 	}))
 	defer ts.Close()
 
 	bow := NewBrowser()
-	bow.Open(ts.URL)
+	ut.AssertNil(bow.Open(ts.URL))
 
 	buff := &bytes.Buffer{}
 	l, err := bow.Download(buff)
@@ -63,7 +63,7 @@ func TestDownload(t *testing.T) {
 func TestUserAgent(t *testing.T) {
 	ut.Run(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		fmt.Fprint(w, req.UserAgent())
+		_, _ = fmt.Fprint(w, req.UserAgent())
 	}))
 	defer ts.Close()
 
@@ -77,8 +77,8 @@ func TestUserAgent(t *testing.T) {
 func TestHeaders(t *testing.T) {
 	ut.Run(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		fmt.Fprint(w, req.Header.Get("X-Testing-1"))
-		fmt.Fprint(w, req.Header.Get("X-Testing-2"))
+		_, _ = fmt.Fprint(w, req.Header.Get("X-Testing-1"))
+		_, _ = fmt.Fprint(w, req.Header.Get("X-Testing-2"))
 	}))
 	defer ts.Close()
 
@@ -94,7 +94,7 @@ func TestHeaders(t *testing.T) {
 func TestBookmarks(t *testing.T) {
 	ut.Run(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, htmlPage1)
+		_, _ = fmt.Fprint(w, htmlPage1)
 	}))
 	defer ts.Close()
 
@@ -102,14 +102,13 @@ func TestBookmarks(t *testing.T) {
 	bow := NewBrowser()
 	bow.SetBookmarksJar(bookmarks)
 
-	bookmarks.Save("test1", ts.URL)
-	bow.OpenBookmark("test1")
+	ut.AssertNil(bookmarks.Save("test1", ts.URL))
+	ut.AssertNil(bow.OpenBookmark("test1"))
 	ut.AssertEquals("Surf Page 1", bow.Title())
 	ut.AssertContains("<p>Hello, Surf!</p>", bow.Body())
 
-	err := bow.Bookmark("test2")
-	ut.AssertNil(err)
-	bow.OpenBookmark("test2")
+	ut.AssertNil(bow.Bookmark("test2"))
+	ut.AssertNil(bow.OpenBookmark("test2"))
 	ut.AssertEquals("Surf Page 1", bow.Title())
 }
 
@@ -117,9 +116,9 @@ func TestClick(t *testing.T) {
 	ut.Run(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
-			fmt.Fprint(w, htmlPage1)
+			_, _ = fmt.Fprint(w, htmlPage1)
 		} else if r.URL.Path == "/page2" {
-			fmt.Fprint(w, htmlPage1)
+			_, _ = fmt.Fprint(w, htmlPage1)
 		}
 	}))
 	defer ts.Close()
@@ -136,7 +135,7 @@ func TestClick(t *testing.T) {
 func TestLinks(t *testing.T) {
 	ut.Run(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, htmlPage1)
+		_, _ = fmt.Fprint(w, htmlPage1)
 	}))
 	defer ts.Close()
 
@@ -157,7 +156,7 @@ func TestLinks(t *testing.T) {
 func TestImages(t *testing.T) {
 	ut.Run(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, htmlPage1)
+		_, _ = fmt.Fprint(w, htmlPage1)
 	}))
 	defer ts.Close()
 
@@ -187,7 +186,7 @@ func TestImages(t *testing.T) {
 func TestStylesheets(t *testing.T) {
 	ut.Run(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, htmlPage1)
+		_, _ = fmt.Fprint(w, htmlPage1)
 	}))
 	defer ts.Close()
 
@@ -215,7 +214,7 @@ func TestStylesheets(t *testing.T) {
 func TestScripts(t *testing.T) {
 	ut.Run(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, htmlPage1)
+		_, _ = fmt.Fprint(w, htmlPage1)
 	}))
 	defer ts.Close()
 

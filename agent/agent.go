@@ -353,15 +353,15 @@ func createFromDetails(bname, bver, osname, osver string, c []string) string {
 	data := TemplateData{bname, bver, osname, osver, comments}
 	buff := &bytes.Buffer{}
 	t := template.New("formatter")
-	t.Parse(Format(bname, bver))
-	t.Execute(buff, data)
+	_, _ = t.Parse(Format(bname, bver))
+	_ = t.Execute(buff, data)
 
 	return buff.String()
 }
 
 // osName returns the name of the OS.
 func osName() string {
-	h, err := host.HostInfo()
+	h, err := host.Info()
 	if err != nil || h.OS == "" {
 		return "Linux"
 	}
@@ -370,22 +370,9 @@ func osName() string {
 
 // osVersion returns the OS version.
 func osVersion() string {
-	h, err := host.HostInfo()
+	h, err := host.Info()
 	if err != nil || h.PlatformVersion == "" {
 		return "0.0"
 	}
 	return h.PlatformVersion
-}
-
-// charsToString converts a [65]int8 byte array into a string.
-func charsToString(ca [65]int8) string {
-	s := make([]byte, len(ca))
-	var lens int
-	for ; lens < len(ca); lens++ {
-		if ca[lens] == 0 {
-			break
-		}
-		s[lens] = uint8(ca[lens])
-	}
-	return string(s[0:lens])
 }

@@ -1,21 +1,43 @@
-box: odoku/golang
+box: pacificporter/golang:1.14.2-12.13.0
 build:
   steps:
-    - setup-go-workspace
-
     - script:
-        name: go get
+        name: go vet
+        cwd: $WERCKER_SOURCE_DIR
         code: |
-          cd $WERCKER_SOURCE_DIR
-          go version
-          go get -t ./...
-
+          go vet ./...
     - script:
-        name: go build
+        name: errcheck
+        cwd: $WERCKER_SOURCE_DIR
         code: |
-          go build ./...
-
+          errcheck -ignore="Close|Run|Write" ./...
+    - script:
+        name: golint
+        cwd: $WERCKER_SOURCE_DIR
+        code: |
+          golint ./... | egrep -v 'Id.* should be .*ID|Url| should have comment | comment on exported ' | perl -e 'local $/; $o=<STDIN>; if ($o eq "") {exit(0)}; print $o; exit(1);'
+    - script:
+        name: gocyclo
+        cwd: $WERCKER_SOURCE_DIR
+        code: |
+          gocyclo -over 20 .
+    - script:
+        name: ineffassign
+        cwd: $WERCKER_SOURCE_DIR
+        code: |
+          ineffassign .
+    - script:
+        name: staticcheck
+        cwd: $WERCKER_SOURCE_DIR
+        code: |
+          staticcheck ./...
+    - script:
+        name: nilerr
+        cwd: $WERCKER_SOURCE_DIR
+        code: |
+          nilerr ./...
     - script:
         name: go test
+        cwd: $WERCKER_SOURCE_DIR
         code: |
-          go test ./... -v
+          TZ=Japan go test ./...
